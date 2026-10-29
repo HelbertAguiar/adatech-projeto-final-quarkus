@@ -1,0 +1,8 @@
+# Override para substituir a JVM por GraalVM Native Image.
+# docker compose -f docker-compose.yml -f docker-compose.native.yml up --build -d
+# O banco continua PostgreSQL: H2 em memoria nao e usado na Native Image.
+services:
+  catalogo-api:
+    build:
+      dockerfile: src/main/docker/Dockerfile.multistage-native
+    image: catalogo-api:aula05-native

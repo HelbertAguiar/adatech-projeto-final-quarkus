@@ -1,0 +1,588 @@
+{
+  "info": {
+    "name": "AULA 05 - Catalogo API - Hibernate ORM e Panache",
+    "description": "Executar pastas em ordem. Ambiente local: H2 (mvn quarkus:dev). Docker: PostgreSQL (docker compose up --build -d). /products pertence a Aula 04 e depende do estoque-local. Os testes de baixo estoque sao para implementacao do laboratorio e falham ate o aluno implementar.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9091"
+    },
+    {
+      "key": "produtoId",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Revisao Aulas 03 e 04",
+      "item": [
+        {
+          "name": "Info da aplicacao",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/info",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Catalogo remoto - Estoque Local necessario",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 se estoque estiver ativo; 503 em fallback', () => pm.expect([200,503]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/q/health/live",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/q/health/ready",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Metricas Prometheus",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/q/metrics",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - CRUD Panache - executar na ordem",
+      "item": [
+        {
+          "name": "1. Listar produtos persistidos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Produtos seed H2 carregados', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.be.an('array');",
+                  "  // Apenas no profile dev/test, PostgreSQL comeca vazio.",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Filtrar por nome",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos?nome=cade",
+            "description": "No H2 dev, deve encontrar Caderno. Em PostgreSQL sem seed pode vir vazio."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Criar produto - salva produtoId",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/produtos",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Mochila\",\n  \"preco\": 79.9,\n  \"quantidade\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Criacao devolve HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.test('ID e Location presentes', () => {",
+                  "  const produto = pm.response.json();",
+                  "  pm.expect(produto.id).to.be.a('number');",
+                  "  pm.expect(produto.nome).to.eql('Mochila');",
+                  "  pm.expect(pm.response.headers.get('Location')).to.include('/produtos/');",
+                  "  pm.collectionVariables.set('produtoId', String(produto.id));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Buscar produto pelo ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/{{produtoId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ID coincide com o criado', () => pm.expect(String(pm.response.json().id)).to.eql(pm.collectionVariables.get('produtoId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Atualizar produto",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/produtos/{{produtoId}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Mochila escolar\",\n  \"preco\": 89.9,\n  \"quantidade\": 8\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Dados atualizados', () => {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.nome).to.eql('Mochila escolar');",
+                  "  pm.expect(data.quantidade).to.eql(8);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Conferir alteracao",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/{{produtoId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ID coincide com o criado', () => pm.expect(String(pm.response.json().id)).to.eql(pm.collectionVariables.get('produtoId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Excluir produto",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/produtos/{{produtoId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204 sem body', () => {",
+                  "  pm.response.to.have.status(204);",
+                  "  pm.expect(pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Buscar depois de excluir (404)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/{{produtoId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Erros e validacao",
+      "item": [
+        {
+          "name": "POST preco negativo -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/produtos",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Produto invalido\",\n  \"preco\": -4,\n  \"quantidade\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400 para dados invalidos', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST nome vazio -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/produtos",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"\",\n  \"preco\": 3.5,\n  \"quantidade\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400 para dados invalidos', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST quantidade negativa -> 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/produtos",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Produto invalido\",\n  \"preco\": 3.5,\n  \"quantidade\": -1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400 para dados invalidos', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET ID inexistente -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/99999999",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT ID inexistente -> 404",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/produtos/99999999",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Mochila\",\n  \"preco\": 79.9,\n  \"quantidade\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE ID inexistente -> 404",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/produtos/99999999",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Laboratorio (aluno implementa)",
+      "item": [
+        {
+          "name": "Baixo estoque (limite 5 padrao)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/baixo-estoque",
+            "description": "Esperado no H2 inicial: Pasta 0, Caderno 5, ordenados."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Baixo estoque limite 0",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/baixo-estoque?limite=0",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Baixo estoque limite 20",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/baixo-estoque?limite=20",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Baixo estoque limite negativo -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/produtos/baixo-estoque?limite=-1",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400 para dados invalidos', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

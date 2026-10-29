@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Estoque Local JVM" type="ShConfigurationType" factoryName="Shell Script">
+    <option name="SCRIPT_TEXT" value="java --class-path estoque-local/src estoque-local/src/EstoqueLocalServer.java" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INTEGRATED" value="false" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="PARENT_ENVIRONMENT" value="true" />
+    <method v="2" />
+  </configuration>
+</component>

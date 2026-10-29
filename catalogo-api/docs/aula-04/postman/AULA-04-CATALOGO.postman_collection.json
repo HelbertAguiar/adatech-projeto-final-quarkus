@@ -1,0 +1,931 @@
+{
+  "info": {
+    "_postman_id": "3532ed13-c7cb-4148-89eb-908a89969460",
+    "name": "Aula 04 — Catálogo API | MicroProfile, Micrometer e Native",
+    "description": "Coleção baseada no catalogo-api-aula-04-atualizado.zip (Quarkus 3.40.1, Java 21). Sequência didática:\n00 (opcional: Estoque Local) → 01 (Config e arquitetura) → 02 (Health) → 03 (Retry/Fallback com intervenção manual) → 04 (Metrics). Para Native execute 05 em vez de duplicar todos os exercícios.\n\nImporte também um dos três ambientes (LOCAL, STAGING, NATIVE). As três configurações usam http://localhost:9091; o que muda é o processo da API e o nome esperado.\n\nIMPORTANTE: não utilize 'Run collection' em todos os folders de uma vez. Parte dos testes exige parar/iniciar o estoque entre requests. Execute individualmente na sequência indicada. Os testes de 'GET /q/metrics — séries' só passam depois de executar ambos os cenários (ESTOQUE e FALLBACK).\n\nPostman não controla Docker Desktop neste projeto. Use o terminal para docker stop/start estoque-local.\n\nO Postman testa HTTP e semântica da API; medições de tamanho de imagem, CPU, memória e tempo de startup são feitas pelo Docker CLI e ferramentas de benchmark.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 • Estoque Local (Aula 03 — integração)",
+      "description": "Requer Estoque Local exposto em http://localhost:8081. No laboratório Docker da Aula 04 o estoque não publica a porta no host — por isso estes três requests são apenas para a execução local na JVM.",
+      "item": [
+        {
+          "name": "00.1 • GET estoque /products (3 itens)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{estoqueBaseUrl}}/products",
+            "description": "Executar java --class-path estoque-local/src estoque-local/src/EstoqueLocalServer.java. O estoque tem Caderno, Caneta e Pasta (stock=0)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });",
+                  "const d=pm.response.json(); pm.test(\"Estoque retorna 3 itens\", () => pm.expect(d.products).to.have.lengthOf(3)); pm.test(\"Pasta tem stock = 0\", () => pm.expect(d.products.find(p => p.title === \"Pasta\")?.stock).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "00.2 • GET estoque rota inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{estoqueBaseUrl}}/rota-inexistente",
+            "description": "Extra: diferencia um erro de rota do fallback do catálogo. Não é uma falha de rede."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "00.3 • POST no estoque (405)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{estoqueBaseUrl}}/products",
+            "description": "Extra: o estoque suporta apenas GET. Verifique header Allow: GET."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 405\", () => pm.response.to.have.status(405));",
+                  "pm.test(\"Allow = GET\", () => pm.expect(pm.response.headers.get(\"Allow\")).to.eql(\"GET\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 • DEMO A — Configuração e arquitetura",
+      "description": "Pré-requisitos: Estoque Local ativo, catálogo Quarkus ativo (mvn quarkus:dev). Testar Config → REST Client. Para demonstrar staging, pare o Quarkus e inicie com: mvn quarkus:dev \"-Dquarkus.profile=staging\"; depois selecione o ambiente Postman Aula04 — STAGING.",
+      "item": [
+        {
+          "name": "01.1 • GET /info — MicroProfile Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/info",
+            "description": "Confere @ConfigProperty(catalogo.nome). Troque o ambiente Postman para validar nome local, staging ou Docker Native. A variável CATALOGO_NOME precisa ser definida antes de iniciar a aplicação."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Tipo de aplicação\", () => pm.expect(dados.tipo).to.eql(\"microservico\"));",
+                  "pm.test(\"Nome configurado\", () => pm.expect(dados.nome).to.be.a(\"string\").and.not.empty);",
+                  "const esperado = pm.environment.get(\"expectedCatalogoNome\") || pm.collectionVariables.get(\"expectedCatalogoNome\");",
+                  "if (esperado) {",
+                  "    pm.test(\"Nome coincide com o ambiente ativo\", () => pm.expect(dados.nome).to.eql(esperado));",
+                  "}",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "01.2 • GET /products — consulta do catálogo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "Fluxo ProductResource -> ProductService -> EstoqueGateway -> Estoque Local. Filtra stock > 0 e mantém IDs originais. Requer estoque ativo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — estoque disponível\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Origem ESTOQUE (sem fallback)\", () => pm.expect(dados.origem).to.eql(\"ESTOQUE\"));",
+                  "pm.test(\"Total = 2 produtos disponíveis\", () => pm.expect(dados.total).to.eql(2));",
+                  "pm.test(\"Retorna 2 itens no array\", () => pm.expect(dados.products).to.be.an(\"array\").with.lengthOf(2));",
+                  "pm.test(\"Produtos têm estoque positivo\", () => pm.expect(dados.products.every(p => p.stock > 0)).to.be.true);",
+                  "pm.test(\"Nomes do catálogo correspondem ao estoque\", () => pm.expect(dados.products.map(p => p.name)).to.have.members([\"Caderno\", \"Caneta\"]));",
+                  "pm.test(\"Pasta sem estoque não aparece\", () => pm.expect(dados.products.some(p => p.name === \"Pasta\")).to.be.false);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "01.3 • GET /info — validar profile STAGING",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/info",
+            "description": "Pré-condição: selecionar ambiente Aula04 — STAGING e iniciar Quarkus com QUARKUS_PROFILE=staging ou -Dquarkus.profile=staging. Espera nome Catálogo API - STAGING."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Tipo de aplicação\", () => pm.expect(dados.tipo).to.eql(\"microservico\"));",
+                  "pm.test(\"Nome configurado\", () => pm.expect(dados.nome).to.be.a(\"string\").and.not.empty);",
+                  "const esperado = pm.environment.get(\"expectedCatalogoNome\") || pm.collectionVariables.get(\"expectedCatalogoNome\");",
+                  "if (esperado) {",
+                  "    pm.test(\"Nome coincide com o ambiente ativo\", () => pm.expect(dados.nome).to.eql(esperado));",
+                  "}",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 • DEMO B — MicroProfile Health",
+      "description": "Estas probes avaliam a execução da API e sua configuração, não a disponibilidade do Estoque Local. Continue a testá-las depois de desligar o estoque.",
+      "item": [
+        {
+          "name": "02.1 • GET /q/health/live — Liveness",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/live",
+            "description": "@Liveness no CatalogoLivenessCheck. Em Kubernetes pode ser configurado como livenessProbe."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Liveness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-vivo presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-vivo\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.2 • GET /q/health/ready — Readiness",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/ready",
+            "description": "@Readiness no CatalogoReadinessCheck. Confere que catalogo.nome não está em branco. Em Kubernetes pode ser usado como readinessProbe."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Readiness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-configurado presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-configurado\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.3 • GET /q/health — agregado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health",
+            "description": "Resposta consolidada de checks como catalogo-vivo e catalogo-configurado. A ordem no array checks não é significativa."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Health agregado\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Contém liveness do catálogo\", () => pm.expect((dados.checks || []).some(c => c.name === \"catalogo-vivo\" && c.status === \"UP\")).to.be.true);",
+                  "pm.test(\"Contém readiness do catálogo\", () => pm.expect((dados.checks || []).some(c => c.name === \"catalogo-configurado\" && c.status === \"UP\")).to.be.true);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 • DEMO C — Retry, Fallback e recuperação",
+      "description": "Execute os requests NA ORDEM. 1) Estoque ativo → 200; 2) pare o processo de estoque (Ctrl+C) ou docker stop estoque-local → 503; 3) probes continuam UP; 4) reative estoque ou docker start estoque-local → 200. Postman NÃO para/inicia contêiner automaticamente.",
+      "item": [
+        {
+          "name": "03.1 • GET /products — sucesso (estoque ativo)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "Pré-condição: estoque ligado. @Retry não precisa intervir. Origem ESTOQUE e HTTP 200."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — estoque disponível\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Origem ESTOQUE (sem fallback)\", () => pm.expect(dados.origem).to.eql(\"ESTOQUE\"));",
+                  "pm.test(\"Total = 2 produtos disponíveis\", () => pm.expect(dados.total).to.eql(2));",
+                  "pm.test(\"Retorna 2 itens no array\", () => pm.expect(dados.products).to.be.an(\"array\").with.lengthOf(2));",
+                  "pm.test(\"Produtos têm estoque positivo\", () => pm.expect(dados.products.every(p => p.stock > 0)).to.be.true);",
+                  "pm.test(\"Nomes do catálogo correspondem ao estoque\", () => pm.expect(dados.products.map(p => p.name)).to.have.members([\"Caderno\", \"Caneta\"]));",
+                  "pm.test(\"Pasta sem estoque não aparece\", () => pm.expect(dados.products.some(p => p.name === \"Pasta\")).to.be.false);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.2 • GET /products — falha e fallback (estoque parado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "AÇÃO MANUAL ANTES DE ENVIAR: pare o Estoque Local no terminal (Ctrl+C), ou docker stop estoque-local. Quarkus executa até 2 retries além da chamada inicial e faz @Fallback. Deve retornar 503, origem FALLBACK, total 0."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 503 — Service Unavailable\", () => pm.response.to.have.status(503));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Fallback ativado\", () => pm.expect(dados.origem).to.eql(\"FALLBACK\"));",
+                  "pm.test(\"Total = 0\", () => pm.expect(dados.total).to.eql(0));",
+                  "pm.test(\"Não inventa produtos quando a dependência falha\", () => pm.expect(dados.products).to.be.an(\"array\").that.is.empty);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.3 • GET /q/health/live — mesmo com estoque parado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/live",
+            "description": "Mantenha o estoque desligado. O catálogo não deve ser reiniciado apenas porque a dependência falhou; neste exercício a liveness permanece UP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Liveness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-vivo presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-vivo\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.4 • GET /q/health/ready — mesmo com estoque parado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/ready",
+            "description": "Mantenha o estoque desligado. Readiness verifica propriedade local, não chama REST Client do estoque."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Readiness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-configurado presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-configurado\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.5 • GET /products — recuperação (estoque religado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "AÇÃO MANUAL ANTES DE ENVIAR: religue o Estoque Local ou docker start estoque-local. Sem reiniciar Quarkus, a resposta deve voltar a HTTP 200 origem ESTOQUE."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — estoque disponível\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Origem ESTOQUE (sem fallback)\", () => pm.expect(dados.origem).to.eql(\"ESTOQUE\"));",
+                  "pm.test(\"Total = 2 produtos disponíveis\", () => pm.expect(dados.total).to.eql(2));",
+                  "pm.test(\"Retorna 2 itens no array\", () => pm.expect(dados.products).to.be.an(\"array\").with.lengthOf(2));",
+                  "pm.test(\"Produtos têm estoque positivo\", () => pm.expect(dados.products.every(p => p.stock > 0)).to.be.true);",
+                  "pm.test(\"Nomes do catálogo correspondem ao estoque\", () => pm.expect(dados.products.map(p => p.name)).to.have.members([\"Caderno\", \"Caneta\"]));",
+                  "pm.test(\"Pasta sem estoque não aparece\", () => pm.expect(dados.products.some(p => p.name === \"Pasta\")).to.be.false);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 • DEMO D — Micrometer e Prometheus",
+      "description": "ProductResource faz meterRegistry.counter(\"catalogo.consultas\", \"origem\", catalogo.origem()).increment() uma vez por requisição que termina. Testar após Demo C para haver ambas as séries. Estas métricas NÃO contam o número de retries e NÃO possuem Gauge customizado neste projeto.",
+      "item": [
+        {
+          "name": "04.1 • GET /products — gerar contador de sucesso",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "Com o estoque ativo, este request incrementa catalogo.consultas com label origem=ESTOQUE."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — estoque disponível\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Origem ESTOQUE (sem fallback)\", () => pm.expect(dados.origem).to.eql(\"ESTOQUE\"));",
+                  "pm.test(\"Total = 2 produtos disponíveis\", () => pm.expect(dados.total).to.eql(2));",
+                  "pm.test(\"Retorna 2 itens no array\", () => pm.expect(dados.products).to.be.an(\"array\").with.lengthOf(2));",
+                  "pm.test(\"Produtos têm estoque positivo\", () => pm.expect(dados.products.every(p => p.stock > 0)).to.be.true);",
+                  "pm.test(\"Nomes do catálogo correspondem ao estoque\", () => pm.expect(dados.products.map(p => p.name)).to.have.members([\"Caderno\", \"Caneta\"]));",
+                  "pm.test(\"Pasta sem estoque não aparece\", () => pm.expect(dados.products.some(p => p.name === \"Pasta\")).to.be.false);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.2 • GET /q/metrics — série ESTOQUE",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{baseUrl}}/q/metrics",
+            "description": "Prometheus text exposition. Rode ao menos um GET /products com estoque ativo antes. Procure catalogo_consultas_total{origem=\"ESTOQUE\"} (a série pode ter outras labels)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Prometheus\", () => pm.response.to.have.status(200));",
+                  "const saida = pm.response.text();",
+                  "pm.test(\"Métrica customizada catalogo_consultas_total\", () => pm.expect(saida).to.include(\"catalogo_consultas_total\"));",
+                  "pm.test(\"Série origem ESTOQUE (execute /products com estoque ativo primeiro)\", () => {",
+                  "    pm.expect(saida).to.match(/catalogo_consultas_total\\{[^\\n}]*origem=\"ESTOQUE\"[^\\n}]*\\}\\s+[0-9.eE+\\-]+/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.3 • GET /q/metrics — séries ESTOQUE e FALLBACK",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{baseUrl}}/q/metrics",
+            "description": "Pré-condição: execute 03.1 e 03.2 primeiro para registrar chamadas de sucesso e de fallback. As séries podem existir em ordem diferente; o teste não exige valor exato do contador."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Prometheus\", () => pm.response.to.have.status(200));",
+                  "const saida = pm.response.text();",
+                  "const linhas = saida.split(\"\\n\").filter(l => l.startsWith(\"catalogo_consultas_total{\"));",
+                  "pm.test(\"Métrica catalogo_consultas_total existe\", () => pm.expect(linhas.length).to.be.greaterThan(0));",
+                  "for (const origem of [\"ESTOQUE\", \"FALLBACK\"]) {",
+                  "    pm.test(`Série origem=${origem} presente`, () => {",
+                  "        pm.expect(linhas.some(l => l.includes(`origem=\"${origem}\"`))).to.be.true;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 • DEMO NATIVE — Docker Desktop (smoke tests)",
+      "description": "Pré-requisito: compilação nativa, Docker network catalogo-aula04, containers estoque-local e catalogo-native ativos; catálogo publicado em localhost:9091; selecione ambiente Postman Aula04 — NATIVE. O estoque não tem porta publicada para o Windows; não execute a pasta 00 nesta configuração. Para simular falha: docker stop estoque-local. Para recuperar: docker start estoque-local.",
+      "item": [
+        {
+          "name": "05.1 • GET /info — CATALOGO_NOME via Docker",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/info",
+            "description": "Valida override de configuração na Native Image. Espera Catálogo Aula 04 - Docker quando container iniciou com -e CATALOGO_NOME=\"Catálogo Aula 04 - Docker\"."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Tipo de aplicação\", () => pm.expect(dados.tipo).to.eql(\"microservico\"));",
+                  "pm.test(\"Nome configurado\", () => pm.expect(dados.nome).to.be.a(\"string\").and.not.empty);",
+                  "const esperado = pm.environment.get(\"expectedCatalogoNome\") || pm.collectionVariables.get(\"expectedCatalogoNome\");",
+                  "if (esperado) {",
+                  "    pm.test(\"Nome coincide com o ambiente ativo\", () => pm.expect(dados.nome).to.eql(esperado));",
+                  "}",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.2 • GET /q/health/live — Native",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/live",
+            "description": "Smoke test do binário nativo em contêiner."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Liveness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-vivo presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-vivo\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.3 • GET /q/health/ready — Native",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/ready",
+            "description": "Smoke test do binário nativo em contêiner."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Readiness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-configurado presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-configurado\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.4 • GET /products — Native, estoque ativo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "Exercita comunicação por rede Docker: ESTOQUE_LOCAL_URL=http://estoque-local:8081. A porta 8081 não precisa estar publicada ao host."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — estoque disponível\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Origem ESTOQUE (sem fallback)\", () => pm.expect(dados.origem).to.eql(\"ESTOQUE\"));",
+                  "pm.test(\"Total = 2 produtos disponíveis\", () => pm.expect(dados.total).to.eql(2));",
+                  "pm.test(\"Retorna 2 itens no array\", () => pm.expect(dados.products).to.be.an(\"array\").with.lengthOf(2));",
+                  "pm.test(\"Produtos têm estoque positivo\", () => pm.expect(dados.products.every(p => p.stock > 0)).to.be.true);",
+                  "pm.test(\"Nomes do catálogo correspondem ao estoque\", () => pm.expect(dados.products.map(p => p.name)).to.have.members([\"Caderno\", \"Caneta\"]));",
+                  "pm.test(\"Pasta sem estoque não aparece\", () => pm.expect(dados.products.some(p => p.name === \"Pasta\")).to.be.false);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.5 • GET /q/metrics — Native",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{baseUrl}}/q/metrics",
+            "description": "Após 05.4, deve conter a série de consultas do catálogo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Prometheus\", () => pm.response.to.have.status(200));",
+                  "const saida = pm.response.text();",
+                  "pm.test(\"Métrica customizada catalogo_consultas_total\", () => pm.expect(saida).to.include(\"catalogo_consultas_total\"));",
+                  "pm.test(\"Série origem ESTOQUE (execute /products com estoque ativo primeiro)\", () => {",
+                  "    pm.expect(saida).to.match(/catalogo_consultas_total\\{[^\\n}]*origem=\"ESTOQUE\"[^\\n}]*\\}\\s+[0-9.eE+\\-]+/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.6 • GET /products — Native, estoque parado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "AÇÃO MANUAL: docker stop estoque-local. Com estoque indisponível, verifica Retry/Fallback e HTTP 503 no binário nativo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 503 — Service Unavailable\", () => pm.response.to.have.status(503));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Fallback ativado\", () => pm.expect(dados.origem).to.eql(\"FALLBACK\"));",
+                  "pm.test(\"Total = 0\", () => pm.expect(dados.total).to.eql(0));",
+                  "pm.test(\"Não inventa produtos quando a dependência falha\", () => pm.expect(dados.products).to.be.an(\"array\").that.is.empty);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.7 • GET /q/health/ready — Native, estoque parado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/q/health/ready",
+            "description": "Mesmo com estoque parado, readiness de configuração local permanece UP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Readiness\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Status global UP\", () => pm.expect(dados.status).to.eql(\"UP\"));",
+                  "pm.test(\"Check catalogo-configurado presente e UP\", () => pm.expect((dados.checks || []).find(c => c.name === \"catalogo-configurado\")?.status).to.eql(\"UP\"));",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.8 • GET /products — Native, recuperação",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/products",
+            "description": "AÇÃO MANUAL: docker start estoque-local. A API deve voltar a retornar produtos sem reiniciar catalogo-native."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — estoque disponível\", () => pm.response.to.have.status(200));",
+                  "const dados = pm.response.json();",
+                  "pm.test(\"Origem ESTOQUE (sem fallback)\", () => pm.expect(dados.origem).to.eql(\"ESTOQUE\"));",
+                  "pm.test(\"Total = 2 produtos disponíveis\", () => pm.expect(dados.total).to.eql(2));",
+                  "pm.test(\"Retorna 2 itens no array\", () => pm.expect(dados.products).to.be.an(\"array\").with.lengthOf(2));",
+                  "pm.test(\"Produtos têm estoque positivo\", () => pm.expect(dados.products.every(p => p.stock > 0)).to.be.true);",
+                  "pm.test(\"Nomes do catálogo correspondem ao estoque\", () => pm.expect(dados.products.map(p => p.name)).to.have.members([\"Caderno\", \"Caneta\"]));",
+                  "pm.test(\"Pasta sem estoque não aparece\", () => pm.expect(dados.products.some(p => p.name === \"Pasta\")).to.be.false);",
+                  "",
+                  "pm.test(\"Content-Type JSON\", function () { pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.9 • GET /q/metrics — Native, sucesso + fallback",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{baseUrl}}/q/metrics",
+            "description": "Após 05.4, 05.6 e 05.8, espera as duas séries de origem (ESTOQUE e FALLBACK)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test(\"HTTP 200 — Prometheus\", () => pm.response.to.have.status(200));",
+                  "const saida = pm.response.text();",
+                  "const linhas = saida.split(\"\\n\").filter(l => l.startsWith(\"catalogo_consultas_total{\"));",
+                  "pm.test(\"Métrica catalogo_consultas_total existe\", () => pm.expect(linhas.length).to.be.greaterThan(0));",
+                  "for (const origem of [\"ESTOQUE\", \"FALLBACK\"]) {",
+                  "    pm.test(`Série origem=${origem} presente`, () => {",
+                  "        pm.expect(linhas.some(l => l.includes(`origem=\"${origem}\"`))).to.be.true;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9091",
+      "type": "string",
+      "description": "Base URL da API Quarkus (JVM ou Native publicada no Windows)."
+    },
+    {
+      "key": "estoqueBaseUrl",
+      "value": "http://localhost:8081",
+      "type": "string",
+      "description": "Estoque Local quando executado fora de Docker, acessível no host."
+    },
+    {
+      "key": "expectedCatalogoNome",
+      "value": "",
+      "type": "string",
+      "description": "Usar vazio para não conferir nome literal; os ambientes configuram automaticamente."
+    }
+  ]
+}

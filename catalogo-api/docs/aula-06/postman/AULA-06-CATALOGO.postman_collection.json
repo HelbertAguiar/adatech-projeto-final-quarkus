@@ -1,0 +1,497 @@
+{
+  "info": {
+    "name": "Aula 06 — Quarkus / Bean Validation e ExceptionMapper",
+    "_postman_id": "37cc15f3-25e6-4e93-9422-931cb38c52bf",
+    "description": "Execute as pastas na ordem (00→03). Serviço remoto do estoque NÃO é necessário. A coleção grava o id criado automaticamente. HTTP 400/404/409 e 200.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 — Preparação",
+      "item": [
+        {
+          "name": "01 - Listar produtos (baseline)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/produtos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 - Criar produto para a demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Item demonstração Aula 06\",\n  \"preco\": 19.9,\n  \"quantidade\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Grava ID para os próximos requests\", () => { const p = pm.response.json(); pm.expect(p.id).to.exist; pm.collectionVariables.set(\"produtoId\", p.id); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 — Bean Validation (400)",
+      "item": [
+        {
+          "name": "03 - POST produto com 3 campos inválidos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"\",\n  \"preco\": -2,\n  \"quantidade\": -1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Código DADOS_INVALIDOS\", () => pm.expect(pm.response.json().codigo).to.eql(\"DADOS_INVALIDOS\"));",
+                  "pm.test(\"Detalhes: nome, preco, quantidade\", () => { const c = pm.response.json().detalhes.map(x => x.campo); [\"nome\",\"preco\",\"quantidade\"].forEach(x => pm.expect(c).to.include(x)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 - POST retirada com quantidade zero",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}/retiradas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}",
+                "retiradas"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Código DADOS_INVALIDOS\", () => pm.expect(pm.response.json().codigo).to.eql(\"DADOS_INVALIDOS\"));",
+                  "pm.test(\"Detalhe quantidade\", () => pm.expect(pm.response.json().detalhes.map(x => x.campo)).to.include(\"quantidade\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 - POST retirada sem quantidade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}/retiradas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}",
+                "retiradas"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Código DADOS_INVALIDOS\", () => pm.expect(pm.response.json().codigo).to.eql(\"DADOS_INVALIDOS\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 — ExceptionMapper e regra de negócio",
+      "item": [
+        {
+          "name": "06 - GET inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/99999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "99999999"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Código PRODUTO_NAO_ENCONTRADO\", () => pm.expect(pm.response.json().codigo).to.eql(\"PRODUTO_NAO_ENCONTRADO\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 - Retirada de produto inexistente (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/99999999/retiradas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "99999999",
+                "retiradas"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Código PRODUTO_NAO_ENCONTRADO\", () => pm.expect(pm.response.json().codigo).to.eql(\"PRODUTO_NAO_ENCONTRADO\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 - Retirada maior que estoque (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}/retiradas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}",
+                "retiradas"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Código ESTOQUE_INSUFICIENTE\", () => pm.expect(pm.response.json().codigo).to.eql(\"ESTOQUE_INSUFICIENTE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 - Confirmar estoque inalterado após 409",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Estoque continua 2\", () => pm.expect(pm.response.json().quantidade).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 — Sucesso, persistência e limpeza",
+      "item": [
+        {
+          "name": "10 - Retirada válida (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}/retiradas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}",
+                "retiradas"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantidade\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Saldo reduzido para 1\", () => pm.expect(pm.response.json().quantidade).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 - Confirmar saldo no GET (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Persistência confirmada\", () => pm.expect(pm.response.json().quantidade).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 - Excluir produto de demonstração (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/produtos/{{produtoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "produtos",
+                "{{produtoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));",
+                  "pm.collectionVariables.unset(\"produtoId\");"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9091"
+    }
+  ]
+}

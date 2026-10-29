@@ -1,0 +1,20 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "title": "Caderno",
+      "stock": 5
+    },
+    {
+      "id": 2,
+      "title": "Caneta",
+      "stock": 1
+    },
+    {
+      "id": 3,
+      "title": "Pasta",
+      "stock": 0
+    }
+  ],
+  "total": 3
+}

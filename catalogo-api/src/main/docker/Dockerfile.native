@@ -1,0 +1,7 @@
+# Requer um executável Linux gerado por: mvn package -Dnative -Dquarkus.native.container-build=true
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
+WORKDIR /work/
+COPY --chown=1001:root --chmod=755 target/*-runner /work/application
+EXPOSE 9091
+USER 1001
+ENTRYPOINT ["./application", "-Dquarkus.http.host=0.0.0.0"]
