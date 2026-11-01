@@ -37,7 +37,7 @@ class ProductResourceTest {
 
     @Test
     void deveExporMicroProfileConfig() {
-        given().when().get("/info").then()
+        given().when().get("/catalogo/info").then()
                 .statusCode(200)
                 .body("nome", is("Catálogo API"))
                 .body("tipo", is("microservico"));

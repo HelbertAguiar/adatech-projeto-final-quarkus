@@ -1,4 +1,53 @@
-# Arquitetura de pacotes — Catálogo API (Aulas 03–05)
+# Arquitetura — projeto final de agendamento
+
+A implementação avaliada fica em `studio.agendamento`. O contrato HTTP, o modelo
+de negócio e a representação persistente são separados:
+
+```text
+HTTP /agendamentos
+  → boundary/AgendamentoResource [RequestDto → campos; BO → ResponseDto.from]
+  → domain/AgendamentoService [AgendamentoBo, regras e transações]
+  → repository/AgendamentoRepository [Panache] / AgendamentoEntity [JPA]
+  → H2
+
+AgendamentoService
+  → integracao/feriados/FeriadosService [Retry + Fallback]
+  → FeriadosClient [REST Client]
+  → mock HTTP local por UF/data
+```
+
+O Service verifica conflitos por sala/data/período e consulta feriados antes de
+persistir. A UF não faz parte da chave da sala: IDs de sala são globais. Uma
+constraint única protege inclusive criações concorrentes. PUT desconsidera o
+próprio ID na consulta de conflitos. `id_usuario` permanece opcional.
+
+POST/PUT/DELETE são transacionais no Service. O evento `AgendamentoCriado` é
+observado em `AFTER_SUCCESS`, para contar somente criações confirmadas. Falhas
+da integração retornam 503 e impedem a escrita. O Service não conhece DTO HTTP;
+o enum de período permanece no pacote repository adotado pelo projeto.
+
+`platform/error` padroniza falhas de validação, ausência, conflito e integração.
+O mapper de validação do agendamento tem prioridade explícita para evitar uma
+seleção ambígua com o exemplo do catálogo. Os detalhes usam apenas o nome do
+campo, preservando o formato usado nos testes anteriores.
+
+`platform/health` separa liveness da readiness controlada por
+`AGENDAMENTO_PRONTO`, além do health do datasource. `platform/info` expõe
+`/info`. O antigo endpoint de configuração do catálogo passa a `/catalogo/info`.
+
+Dev, staging e prod usam H2 em arquivo com atualização de schema. Somente os
+testes usam schema descartável em memória. Dados persistentes existentes não
+devem ser excluídos para contornar erros.
+
+Veja [o README atual](../README.md) e [as evidências 01–16](evidencias.md).
+
+---
+
+## Referência histórica — Catálogo API (Aulas 03–05)
+
+O texto abaixo registra o material anterior. Os exemplos PostgreSQL/Compose e
+as menções antigas a `/info` devem ser lidos nesse contexto; a configuração
+atual e o endpoint do projeto final estão descritos acima.
 
 Organização adotada: **Package by Feature + Boundary / Domain / Repository**, padrão híbrido familiar a equipas Java/Spring Boot. A organização principal é por capacidade de negócio; dentro dela, as classes ficam separadas por responsabilidade. **Não é uma implementação rigorosa de Clean Architecture/Hexagonal**: para manter a aula simples, o domínio ainda usa o repositório Panache e o client REST concreto.
 

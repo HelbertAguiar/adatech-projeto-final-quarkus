@@ -43,3 +43,9 @@ nb-configuration.xml
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# Bancos H2 e arquivos de bloqueio locais (não apagar dados existentes)
+data/
+*.mv.db
+*.trace.db
+*.lock.db

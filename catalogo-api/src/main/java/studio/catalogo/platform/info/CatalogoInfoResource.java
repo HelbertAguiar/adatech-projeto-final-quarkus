@@ -6,7 +6,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-@Path("/info")
+@Path("/catalogo/info")
 @Produces(MediaType.APPLICATION_JSON)
 public class CatalogoInfoResource {
 
