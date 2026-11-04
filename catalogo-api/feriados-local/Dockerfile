@@ -1,7 +1,7 @@
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
 COPY src/ ./
-RUN javac -d /out FeriadosLocalServer.java
+RUN javac -d /out FeriadosLocalServer.java FeriadosHealthCheck.java
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

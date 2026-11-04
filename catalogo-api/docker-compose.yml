@@ -20,14 +20,14 @@ services:
     networks: [interna]
     # Sem ports: banco não fica acessível do host ou da Internet.
 
-  estoque-local:
+  feriados-local:
     build:
-      context: ./estoque-local
+      context: ./feriados-local
     restart: unless-stopped
     ports:
       - "127.0.0.1:8081:8081"  # demonstração local via Postman
     healthcheck:
-      test: ["CMD", "java", "-cp", "/app", "EstoqueHealthCheck"]
+      test: ["CMD", "java", "-cp", "/app", "FeriadosHealthCheck"]
       interval: 5s
       timeout: 4s
       retries: 10
@@ -44,15 +44,15 @@ services:
     environment:
       QUARKUS_PROFILE: prod
       QUARKUS_HTTP_HOST: "0.0.0.0"
-      ESTOQUE_LOCAL_URL: http://estoque-local:8081
-      CATALOGO_NOME: "Catálogo API - Aula 05 (PostgreSQL)"
+      FERIADOS_URL: http://feriados-local:8081
+      CATALOGO_NOME: "Catálogo API - Projeto final"
       DB_URL: jdbc:postgresql://postgres:5432/${CATALOGO_DB_NAME:-catalogodb}
       DB_USERNAME: ${CATALOGO_DB_USER:-catalogo}
       DB_PASSWORD: ${CATALOGO_DB_PASSWORD:?Defina CATALOGO_DB_PASSWORD no arquivo .env}
     depends_on:
       postgres:
         condition: service_healthy
-      estoque-local:
+      feriados-local:
         condition: service_healthy
     networks: [interna]
 
