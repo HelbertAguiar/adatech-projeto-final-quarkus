@@ -20,12 +20,18 @@ public class AgendamentoResource {
         return Response.ok(service.listar().stream().map(AgendamentoResponseDto::from).toList()).build();
     }
 
-    @GET
+/*     @GET
     @Path("/{id}")
     public AgendamentoResponseDto buscar(@PathParam("id") @Positive Long id) {
         return AgendamentoResponseDto.from(service.buscar(id));
-    }
+    } */
 
+    @GET
+    @Path("/{id}")
+    public Response buscar(@PathParam("id") @Positive Long id) {
+        return Response.ok(AgendamentoResponseDto.from(service.buscar(id))).build();
+    }
+    
     @POST
     public Response criar(@NotNull @Valid AgendamentoRequestDto request, @Context UriInfo uriInfo) {
         var bo = service.criar(request.id_sala(), request.id_usuario(), request.uf(), request.data(), request.periodo());
@@ -34,12 +40,23 @@ public class AgendamentoResource {
                 .entity(resposta).build();
     }
 
-    @PUT
+/*     @PUT
     @Path("/{id}")
     public AgendamentoResponseDto atualizar(@PathParam("id") @Positive Long id,
                                            @NotNull @Valid AgendamentoRequestDto request) {
         return AgendamentoResponseDto.from(service.atualizar(id, request.id_sala(),
                 request.id_usuario(), request.uf(), request.data(), request.periodo()));
+    } */
+
+    @PUT
+    @Path("/{id}")
+    public Response atualizar(@PathParam("id") @Positive Long id, @NotNull @Valid AgendamentoRequestDto request) {
+        return Response.ok( AgendamentoResponseDto.from( service.atualizar( 
+            id, request.id_sala(),
+            request.id_usuario(),
+            request.uf(),request.data(),
+            request.periodo()))
+        ).build();
     }
 
     @DELETE
