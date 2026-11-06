@@ -1,0 +1,616 @@
+{
+  "info": {
+    "name": "Projeto final — Agendamento de Massagem",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Execute Fluxo principal com API e mock UP. Os cenários opcionais exigem intervenção conforme README."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9091"
+    },
+    {
+      "key": "testarFalha",
+      "value": "false"
+    },
+    {
+      "key": "testarReadinessDown",
+      "value": "false"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const ano = new Date().getFullYear() + 1;",
+          "pm.collectionVariables.set('data', ano + '-02-10');",
+          "pm.collectionVariables.set('feriado', ano + '-01-01');"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Fluxo principal — mock UP",
+      "item": [
+        {
+          "name": "Configuração",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/info"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('sala', Math.floor(Math.random()*1000000000)+1);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nome configurado', () => pm.expect(pm.response.json().nome).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/q/health/live"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/q/health/ready"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Métrica antes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/q/metrics"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const match = pm.response.text().match(/^agendamentos_criados_total\\s+([\\d.eE+-]+)/m);",
+                  "pm.test('Contador presente', () => pm.expect(match).not.to.equal(null));",
+                  "if (match) pm.collectionVariables.set('contadorAntes', Number(match[1]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar reserva",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 10,\n  \"uf\": \"SP\",\n  \"data\": \"{{data}}\",\n  \"periodo\": \"MANHA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('id', pm.response.json().id);",
+                  "pm.test('Location', () => pm.expect(pm.response.headers.get('Location')).to.match(/\\/agendamentos\\/[0-9]+$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Métrica depois",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/q/metrics"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const match = pm.response.text().match(/^agendamentos_criados_total\\s+([\\d.eE+-]+)/m);",
+                  "pm.test('Uma criação confirmada', () => pm.expect(Number(match[1])).to.equal(Number(pm.collectionVariables.get('contadorAntes'))+1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/agendamentos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Lista', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/agendamentos/{{id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conflito de reserva",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 10,\n  \"uf\": \"SP\",\n  \"data\": \"{{data}}\",\n  \"periodo\": \"MANHA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT do próprio registro",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos/{{id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 10,\n  \"uf\": \"SP\",\n  \"data\": \"{{data}}\",\n  \"periodo\": \"MANHA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alterar para tarde",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos/{{id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 10,\n  \"uf\": \"SP\",\n  \"data\": \"{{data}}\",\n  \"periodo\": \"TARDE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirmar alteração",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/agendamentos/{{id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PUT persistiu', () => pm.expect(pm.response.json().periodo).to.equal('TARDE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obrigatórios ausentes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Identificador inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 0,\n  \"uf\": \"SP\",\n  \"data\": \"{{data}}\",\n  \"periodo\": \"MANHA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "JSON inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Feriado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 10,\n  \"uf\": \"SP\",\n  \"data\": \"{{feriado}}\",\n  \"periodo\": \"MANHA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Excluir",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/agendamentos/{{id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar excluído",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/agendamentos/{{id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Excluir ausente",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/agendamentos/{{id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cenários opcionais — ver README",
+      "item": [
+        {
+          "name": "Mock desligado — habilitar testarFalha",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/agendamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_sala\": \"{{sala}}\",\n  \"id_usuario\": 10,\n  \"uf\": \"SP\",\n  \"data\": \"{{data}}\",\n  \"periodo\": \"MANHA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get('testarFalha') !== 'true') pm.execution.skipRequest();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 503', () => pm.response.to.have.status(503));",
+                  "pm.test('Erro padronizado', () => { const e = pm.response.json(); ['codigo','mensagem','timestamp','path','detalhes'].forEach(k => pm.expect(e).to.have.property(k)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness DOWN — habilitar testarReadinessDown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/q/health/ready"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.collectionVariables.get('testarReadinessDown') !== 'true') pm.execution.skipRequest();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 503', () => pm.response.to.have.status(503));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

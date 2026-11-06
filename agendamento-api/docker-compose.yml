@@ -1,0 +1,64 @@
+# Ambiente de produção LOCAL, para demonstração (não é infraestrutura de produção real).
+# Crie .env a partir de .env.example antes de executar.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CATALOGO_DB_NAME:-catalogodb}
+      POSTGRES_USER: ${CATALOGO_DB_USER:-catalogo}
+      POSTGRES_PASSWORD: ${CATALOGO_DB_PASSWORD:?Defina CATALOGO_DB_PASSWORD no arquivo .env}
+    volumes:
+      - catalogo_pgdata:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+    networks: [interna]
+    # Sem ports: banco não fica acessível do host ou da Internet.
+
+  feriados-local:
+    build:
+      context: ./feriados-local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8081"  # demonstração local via Postman
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/app", "FeriadosHealthCheck"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+      start_period: 5s
+    networks: [interna]
+
+  agendamento-api:
+    build:
+      context: .
+      dockerfile: src/main/docker/Dockerfile.jvm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9091:9091"
+    environment:
+      QUARKUS_PROFILE: prod
+      QUARKUS_HTTP_HOST: "0.0.0.0"
+      FERIADOS_URL: http://feriados-local:8081
+      AGENDAMENTO_NOME: ${AGENDAMENTO_NOME:-Agendamento de Massagem - PROD}
+      DB_URL: jdbc:postgresql://postgres:5432/${CATALOGO_DB_NAME:-catalogodb}
+      DB_USERNAME: ${CATALOGO_DB_USER:-catalogo}
+      DB_PASSWORD: ${CATALOGO_DB_PASSWORD:?Defina CATALOGO_DB_PASSWORD no arquivo .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      feriados-local:
+        condition: service_healthy
+    networks: [interna]
+
+volumes:
+  catalogo_pgdata:
+
+networks:
+  interna:
+    driver: bridge

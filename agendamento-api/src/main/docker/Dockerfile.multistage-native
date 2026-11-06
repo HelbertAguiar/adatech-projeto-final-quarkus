@@ -1,0 +1,22 @@
+# Build completo da Native Image DENTRO do Docker, sem binario preexistente.
+# O projeto nao tem mvnw; copiamos Maven de uma imagem oficial.
+FROM maven:3.9-eclipse-temurin-21 AS maven-tools
+
+FROM quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-25 AS build
+COPY --from=maven-tools /usr/share/maven /usr/share/maven
+ENV MAVEN_HOME=/usr/share/maven
+ENV PATH="/usr/share/maven/bin:${PATH}"
+WORKDIR /code
+COPY --chown=quarkus:quarkus pom.xml ./
+COPY --chown=quarkus:quarkus src ./src
+USER quarkus
+# Compila nativamente no proprio builder Linux. NAO usar container-build=true aqui.
+RUN mvn -B -ntp -DskipTests -DskipITs package -Dnative
+
+# Builder UBI9 => runtime tambem UBI9 (compatibilidade com glibc).
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
+WORKDIR /work
+COPY --from=build --chown=1001:root --chmod=755 /code/target/*-runner /work/application
+EXPOSE 9091
+USER 1001
+ENTRYPOINT ["/work/application", "-Dquarkus.http.host=0.0.0.0"]

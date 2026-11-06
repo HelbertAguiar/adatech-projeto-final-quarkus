@@ -1,0 +1,12 @@
+.git
+.idea
+.run
+**/target
+**/.DS_Store
+**/*.class
+
+.env
+.env.*
+!.env.example
+docs/
+*.zip
