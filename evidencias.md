@@ -1,6 +1,6 @@
 # Evidências — Projeto final de agendamento de massagem
 
-Enunciado principal: [trabalho-final.md](../trabalho-final.md).
+Enunciado principal: [trabalho-final.md](trabalho-final.md).
 Os 16 itens abaixo têm implementação e roteiro reproduzível.
 A pontuação cabe à avaliação do professor; este documento não atribui nota automaticamente.
 

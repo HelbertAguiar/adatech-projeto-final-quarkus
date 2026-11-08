@@ -39,7 +39,7 @@ Dev, staging e prod usam H2 em arquivo com atualização de schema. Somente os
 testes usam schema descartável em memória. Dados persistentes existentes não
 devem ser excluídos para contornar erros.
 
-Veja [o README atual](../README.md) e [as evidências 01–16](evidencias.md).
+Veja [o README atual](agendamento-api/README.md) e [as evidências 01–16](evidencias.md).
 
 ---
 
