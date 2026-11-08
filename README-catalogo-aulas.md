@@ -1,7 +1,7 @@
 # Catálogo API — Java 21 / Quarkus 3.40.1 (Aulas 03–06)
 
 > Referência histórica preservada. Para executar o projeto final de agendamento,
-> use [o README atual](agendamento-api/README.md). A configuração de banco foi alterada para
+> use [o README atual](README.md). A configuração de banco foi alterada para
 > H2 persistente e o antigo `/info` do catálogo agora é `/catalogo/info`.
 
 Projeto didático evolutivo: Aulas 03 (REST Client), 04 (MicroProfile/observabilidade/resiliência) 05 (Hibernate ORM/Panache/PostgreSQL) e 06 (Bean Validation/ExceptionMapper). Código organizado por **funcionalidade + Boundary / Domain / Repository**, mantendo a separação entre contratos HTTP, lógica de negócio e persistência.

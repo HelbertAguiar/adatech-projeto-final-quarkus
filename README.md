@@ -13,7 +13,7 @@ API REST para reservar uma sala por data e período inteiro (`MANHA`, `TARDE` ou
 
 **Tecnologias:** Java 21, Quarkus 3.40.1, Maven 3.9+, H2, Panache, Bean Validation, Lombok, MicroProfile Health/Fault Tolerance e Micrometer.
 
-Enunciado: [trabalho-final.md](trabalho-final.md). Evidências e situação das demonstrações: [evidencias.md](../evidencias.md).
+Enunciado: [trabalho-final.md](trabalho-final.md). Evidências e situação das demonstrações: [evidencias.md](evidencias.md).
 
 ## Iniciar localmente
 
@@ -32,7 +32,7 @@ mvn quarkus:dev
 ```
 
 A API responde em http://localhost:9091; o mock, em http://127.0.0.1:8081.
-O mock considera feriado apenas 1º de janeiro de qualquer ano e datas configuradas em `FERIADOS_EXTRAS`. Consulte [feriados-local/README.md](feriados-local/README.md). Encerre qualquer estoque-local que já esteja usando a porta 8081, ou configure outra porta para o mock e a URL correspondente na API.
+O mock considera feriado apenas 1º de janeiro de qualquer ano e datas configuradas em `FERIADOS_EXTRAS`. Consulte [feriados-local/README.md](agendamento-api/feriados-local/README.md). Encerre qualquer estoque-local que já esteja usando a porta 8081, ou configure outra porta para o mock e a URL correspondente na API.
 
 ## Contrato e regras
 
@@ -92,7 +92,7 @@ Invoke-RestMethod "http://localhost:9091/agendamentos/$($reserva.id)" -Method Pu
 Invoke-RestMethod "http://localhost:9091/agendamentos/$($reserva.id)" -Method Delete
 ```
 
-Importe [postman/projeto-final.postman_collection.json](postman/projeto-final.postman_collection.json) no Postman e execute a pasta **Fluxo principal — mock UP** na ordem. Datas são calculadas para o próximo ano. Ajuste `baseUrl` se alterar a porta.
+Importe [postman/projeto-final.postman_collection.json](agendamento-api/postman/projeto-final.postman_collection.json) no Postman e execute a pasta **Fluxo principal — mock UP** na ordem. Datas são calculadas para o próximo ano. Ajuste `baseUrl` se alterar a porta.
 
 Para demonstrar resiliência, pare somente o mock com Ctrl+C e execute:
 
@@ -182,10 +182,10 @@ O Resource passa campos ao Service e converte o BO por `ResponseDto.from`. As es
 | 15 — ExceptionMapper | platform/error/mapper; testes 404/409/503 |
 | 16 — Erro padronizado | ErroResponse; testes distintos de 400 e 404 |
 
-Consulte [evidencias.md](../evidencias.md) para separar implementação, testes executados e demonstrações pendentes.
+Consulte [evidencias.md](evidencias.md) para separar implementação, testes executados e demonstrações pendentes.
 
 ## Material anterior preservado
 
 Os pacotes `studio.catalogo`, seus testes e as documentações das aulas continuam no repositório. As rotas didáticas `/produtos`, `/products` e `/products-native` permanecem disponíveis; as informações antigas foram movidas para `/catalogo/info` para liberar `/info` ao agendamento.
 
-A [documentação histórica do catálogo](../README-catalogo-aulas.md), os arquivos Compose/PostgreSQL e os guias das aulas descrevem a configuração anterior. O caminho de execução deste projeto final é o H2 com mock de feriados descrito acima; os Compose antigos não foram adaptados nem validados para o agendamento. Nenhum banco existente deve ser removido para iniciar ou testar a API.
+A [documentação histórica do catálogo](README-catalogo-aulas.md), os arquivos Compose/PostgreSQL e os guias das aulas descrevem a configuração anterior. O caminho de execução deste projeto final é o H2 com mock de feriados descrito acima; os Compose antigos não foram adaptados nem validados para o agendamento. Nenhum banco existente deve ser removido para iniciar ou testar a API.
