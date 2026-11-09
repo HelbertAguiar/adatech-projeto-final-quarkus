@@ -1,191 +1,339 @@
-# Agendamento de Massagem — projeto final
+# Agendamento de Massagem
 
-API REST para reservar uma sala por data e período inteiro (`MANHA`, `TARDE` ou `NOITE`). Impede duas reservas da mesma sala no mesmo período e bloqueia agendamentos em feriados da UF informada.
+API REST para reservar salas de massagem por data e período (`MANHA`, `TARDE` ou `NOITE`). Evita reservas da mesma sala no mesmo período e impede agendamentos em feriados da UF informada, consultados por HTTP em um mock local.
 
-**Equipe:** Equipe 1 — Sala 1.
-**Integrantes:**
-1. Helbert Oscar de Aguiar Silva
-2. Gabriel Moraes Kleiman
-3. Andre Augusto de Araujo Costa
-4. Kali Rocha Ribeiro
-5. Khalil de Freitas
+**Equipe 1 — Sala 1:** Helbert Oscar de Aguiar Silva, Gabriel Moraes Kleiman, Andre Augusto de Araujo Costa, Kali Rocha Ribeiro e Khalil de Freitas.
 
+## Documentação
 
-**Tecnologias:** Java 21, Quarkus 3.40.1, Maven 3.9+, H2, Panache, Bean Validation, Lombok, MicroProfile Health/Fault Tolerance e Micrometer.
+- [Especificação do professor](trabalho-final-especificacao-professor.md).
+- [Arquitetura técnica](ARQUITETURA.md): componentes, fluxos, persistência.
+- [Checklist de requisitos e evidências](checklist.md): matriz de requisitos e evidencias.
 
-Enunciado: [trabalho-final.md](trabalho-final.md). Evidências e situação das demonstrações: [evidencias.md](evidencias.md).
+## Tecnologias e estrutura
 
-## Iniciar localmente
+As versões declaradas no [pom.xml](agendamento-api/pom.xml) são: aplicação `studio:agendamento-api:1.0.0`, Java **21**, Quarkus **3.40.1**, Lombok **1.18.48**, Maven Compiler Plugin **3.15.0** e Surefire/Failsafe **3.5.6**. As versões individuais de Hibernate ORM, Panache, Jackson, H2, driver PostgreSQL, Hibernate Validator, SmallRye Health/Fault Tolerance, Micrometer/Prometheus, JUnit e REST Assured são gerenciadas pelo BOM Quarkus. O projeto não contém Maven Wrapper; use Maven 3.9.x, também adotado pelo Dockerfile JVM.
 
-Use dois terminais PowerShell na raiz de `agendamento-api`, com JDK 21. Confirme `java -version` e `mvn -version`: ambos devem indicar Java 21. Se necessário, ajuste `JAVA_HOME` para a instalação do JDK 21 antes de executar Maven.
+Há um módulo Maven, em `agendamento-api`. O código adota organização por funcionalidade e camadas Resource → Service → Repository:
 
-Terminal 1 — mock HTTP, sem dependências adicionais:
+```text
+agendamento-api/src/main/java/studio/agendamento/
+├── agendamentos/
+│   ├── boundary/       # REST e DTOs de entrada/saída
+│   ├── domain/         # serviço CDI, BO, regras, exceções e evento
+│   └── repository/     # entidade JPA, PanacheRepository e enum de período
+├── integracao/feriados/ # REST Client, contrato externo e resiliência
+└── platform/           # erros, health, info e métricas
+```
+
+## Executar localmente
+
+Os blocos **PowerShell e Bash** contêm comandos comuns aos dois ambientes. Quando a sintaxe difere, os exemplos são identificados separadamente. PowerShell 7 (`pwsh`) funciona no Windows, Linux e macOS. Instale os executáveis citados e disponibilize-os no `PATH`; caminhos relativos com `/` funcionam nos dois interpretadores.
+
+Na raiz do repositório:
+
+**PowerShell e Bash**
+
+```bash
+cd agendamento-api
+java -version
+mvn -version
+```
+
+Os dois comandos devem apontar para Java 21; ajuste `JAVA_HOME` e `PATH` se necessário, substituindo o caminho de exemplo pelo diretório do JDK instalado:
+
+**PowerShell**
 
 ```powershell
+# Windows; no Linux/macOS use o caminho real do JDK, como /opt/jdk-21.
+$env:JAVA_HOME = 'C:/Program Files/Java/jdk-21'
+$env:PATH = (Join-Path $env:JAVA_HOME 'bin') + [IO.Path]::PathSeparator + $env:PATH
+```
+
+**Bash**
+
+```bash
+export JAVA_HOME='/opt/jdk-21' # No macOS, use o diretório Home do JDK instalado.
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+Confira novamente `java -version` e `mvn -version`. Os comandos seguintes partem de `agendamento-api`.
+
+Terminal 1 — mock HTTP (somente JDK, sem Maven):
+
+**PowerShell e Bash**
+
+```bash
 java feriados-local/src/FeriadosLocalServer.java
 ```
 
-Terminal 2 — API:
+Terminal 2 — API, profile `dev`, H2 em arquivo:
 
-```powershell
+**PowerShell e Bash**
+
+```bash
 mvn quarkus:dev
 ```
 
-A API responde em http://localhost:9091; o mock, em http://127.0.0.1:8081.
-O mock considera feriado apenas 1º de janeiro de qualquer ano e datas configuradas em `FERIADOS_EXTRAS`. Consulte [feriados-local/README.md](agendamento-api/feriados-local/README.md). Encerre qualquer estoque-local que já esteja usando a porta 8081, ou configure outra porta para o mock e a URL correspondente na API.
+API: `http://localhost:9091`. Mock: `http://127.0.0.1:8081`. As portas devem estar livres. O mock marca apenas 1º de janeiro de qualquer ano e datas de `FERIADOS_EXTRAS` como feriado; não é um calendário oficial. Veja [instruções do mock](agendamento-api/feriados-local/README.md).
 
-## Contrato e regras
+### Compilar, testar e executar o JAR
 
-| Campo de entrada | Regra |
+**PowerShell e Bash**
+
+```bash
+mvn -B -ntp "-Dquarkus.hibernate-orm.sql-load-script=no-file" test
+mvn -B -ntp "-Dquarkus.profile=staging" "-DskipTests" package
+java "-Dquarkus.profile=staging" -jar target/quarkus-app/quarkus-run.jar
+```
+
+O empacotamento acima seleciona `staging` para usar H2, evitando as exigências de PostgreSQL do profile padrão `prod`. Pare a API anterior antes de iniciar o JAR e mantenha o mock ativo para POST/PUT. Não abra duas instâncias sobre o mesmo arquivo H2.
+
+Os testes usam H2 em memória, porta HTTP aleatória e mock próprio, sem necessidade de iniciar o mock manualmente. `StagingReadinessTest` também sobrescreve o datasource para memória. Relatórios são gerados em `agendamento-api/target/surefire-reports/`; a situação da execução desta revisão está no [checklist](checklist.md#validacao-desta-revisao).
+
+Sem seleção explícita de profile, o build/JAR usa `prod`: requer PostgreSQL e `DB_PASSWORD`, além de `DB_URL` e `DB_USERNAME` adequados ao ambiente. O [Compose JVM](agendamento-api/docker-compose.yml) fornece banco PostgreSQL 17 Alpine, mock e API; o build é feito no [Dockerfile JVM](agendamento-api/src/main/docker/Dockerfile.jvm). Para demonstração opcional, substitua o valor local de senha:
+
+**PowerShell**
+
+```powershell
+$env:CATALOGO_DB_PASSWORD = 'substitua-por-uma-senha-local'
+```
+
+**Bash**
+
+```bash
+export CATALOGO_DB_PASSWORD='substitua-por-uma-senha-local'
+```
+
+**PowerShell e Bash**
+
+```bash
+docker compose up --build -d
+# Ao terminar, preservando o volume:
+docker compose down
+```
+
+Depois de encerrar, remova a variável da sessão:
+
+**PowerShell**
+
+```powershell
+Remove-Item Env:CATALOGO_DB_PASSWORD -ErrorAction SilentlyContinue
+```
+
+**Bash**
+
+```bash
+unset CATALOGO_DB_PASSWORD
+```
+
+## Contrato HTTP e regras
+
+| Campo de entrada | Regra implementada |
 |---|---|
-| `id_sala` | Obrigatório e positivo; identificador global |
-| `id_usuario` | Opcional; quando informado, deve ser positivo |
-| `uf` | Sigla válida em maiúsculas, incluindo DF |
-| `data` | Data ISO `yyyy-MM-dd`, hoje ou futura |
+| `id_sala` | Obrigatório, positivo; identificador global da sala |
+| `id_usuario` | Opcional; positivo quando informado |
+| `uf` | Obrigatória; sigla brasileira válida em maiúsculas, incluindo DF |
+| `data` | Obrigatória, ISO `yyyy-MM-dd`, hoje ou futura |
 | `periodo` | Obrigatório: `MANHA`, `TARDE` ou `NOITE` |
 
-Uma sala só pode ter uma reserva por data/período, independentemente da UF. PUT ignora a própria reserva ao verificar conflitos. A consulta de feriados ocorre no POST e no PUT. Falha externa faz três tentativas ao todo e retorna 503 sem gravar a alteração. A constraint única do banco também protege reservas simultâneas.
+A combinação sala/data/período é única, independentemente da UF. PUT substitui os campos da reserva e ignora o próprio ID na busca de conflito. POST/PUT consultam feriados após a verificação de conflito. Feriado ou conflito gera 409; falha na consulta externa gera 503 após até três tentativas, sem gravar a alteração.
 
-A resposta inclui `id` e `salaDisponivel: false`, pois representa uma reserva que ocupa o período inteiro. Não há cadastro de salas ou usuários, frontend ou autenticação.
+A resposta contém `id` e `salaDisponivel: false`, pois descreve uma reserva existente. Esse campo não é uma consulta de disponibilidade. Não há cadastro de salas/usuários, autenticação ou frontend.
 
-| Método e rota | Resultado |
+| Método e caminho | Resposta de sucesso / comportamento |
 |---|---|
-| GET `/agendamentos` | 200, lista ordenada por ID |
-| GET `/agendamentos/{id}` | 200 ou 404 |
-| POST `/agendamentos` | 201 e cabeçalho Location |
-| PUT `/agendamentos/{id}` | 200 com reserva atualizada |
-| DELETE `/agendamentos/{id}` | 204 ou 404 |
-| GET `/info` | 200 com nome configurado |
-| GET `/q/health/live` | 200/UP enquanto a aplicação responde |
-| GET `/q/health/ready` | UP ou 503/DOWN conforme configuração e banco |
-| GET `/q/metrics` | Métricas Prometheus |
+| GET `/agendamentos` | 200; coleção ordenada por ID, sem paginação |
+| GET `/agendamentos/{id}` | 200; 404 se ausente |
+| POST `/agendamentos` | 201; JSON e cabeçalho `Location` |
+| PUT `/agendamentos/{id}` | 200; JSON atualizado; 404 se ausente |
+| DELETE `/agendamentos/{id}` | 204 sem corpo; 404 se ausente |
+| GET `/info` | 200; `{"nome":"..."}` com valor configurado |
+| GET `/q/health/live` | 200/UP quando o check executa |
+| GET `/q/health/ready` | 200/UP ou 503/DOWN, conforme habilitação e saúde do datasource |
+| GET `/q/metrics` | Exposição Prometheus, incluindo `agendamentos_criados_total` |
 
-Entradas inválidas retornam 400; ausência retorna 404; sala ocupada ou feriado retorna 409; indisponibilidade de feriados retorna 503. Os erros seguem o mesmo contrato:
+Essas rotas pertencem à API. O mock oferece `GET /feriados?uf=SP&data=...` em outra porta.
+
+### Exemplos de requisições e respostas
+
+Exemplos com data calculada para o próximo ano e sala escolhida para a demonstração (troque-a se já estiver reservada):
+
+**PowerShell**
+
+```powershell
+$ano = (Get-Date).Year + 1
+$dados = @{ id_sala=101; id_usuario=10; uf='SP'; data="$ano-02-10"; periodo='MANHA' }
+$resposta = Invoke-WebRequest -Uri 'http://localhost:9091/agendamentos' -Method Post -ContentType 'application/json' -Body ($dados | ConvertTo-Json) -UseBasicParsing
+$resposta.StatusCode
+$resposta.Headers
+$resposta.Content
+```
+
+**Bash** (requer `curl`)
+
+```bash
+ano=$(($(date +%Y) + 1))
+curl -i http://localhost:9091/agendamentos \
+  -H 'Content-Type: application/json' \
+  -d "{\"id_sala\":101,\"id_usuario\":10,\"uf\":\"SP\",\"data\":\"$ano-02-10\",\"periodo\":\"MANHA\"}"
+```
+
+Resposta **ilustrativa**, não captura de execução; ID e ano variam:
+
+```http
+HTTP/1.1 201 Created
+Location: http://localhost:9091/agendamentos/1
+Content-Type: application/json
+
+{"id":1,"id_sala":101,"salaDisponivel":false,"id_usuario":10,"uf":"SP","data":"2027-02-10","periodo":"MANHA"}
+```
+
+Use o ID retornado para consultar, atualizar com o mesmo contrato de entrada e excluir (substitua `1` nos exemplos). Continue no mesmo terminal para reutilizar o ano e, no PowerShell, `$dados`:
+
+**PowerShell**
+
+```powershell
+Invoke-WebRequest -Uri 'http://localhost:9091/agendamentos/1' -UseBasicParsing
+$dados.periodo = 'TARDE'
+Invoke-WebRequest -Uri 'http://localhost:9091/agendamentos/1' -Method Put -ContentType 'application/json' -Body ($dados | ConvertTo-Json) -UseBasicParsing
+Invoke-WebRequest -Uri 'http://localhost:9091/agendamentos/1' -UseBasicParsing
+Invoke-WebRequest -Uri 'http://localhost:9091/agendamentos/1' -Method Delete -UseBasicParsing
+try {
+    Invoke-WebRequest -Uri 'http://localhost:9091/agendamentos/1' -UseBasicParsing
+} catch {
+    if ($null -eq $_.Exception.Response) { throw }
+    [int]$_.Exception.Response.StatusCode
+    $_.ErrorDetails.Message
+}
+```
+
+O PowerShell lança exceção para respostas HTTP de erro; a última consulta captura o 404 e exibe seu corpo. Esses exemplos evitam o alias `curl` do Windows PowerShell. No Bash, `curl -i` exibe status, cabeçalhos e corpo, inclusive nos erros HTTP.
+
+**Bash**
+
+```bash
+curl -i http://localhost:9091/agendamentos/1
+curl -i -X PUT http://localhost:9091/agendamentos/1 \
+  -H 'Content-Type: application/json' \
+  -d "{\"id_sala\":101,\"id_usuario\":10,\"uf\":\"SP\",\"data\":\"$ano-02-10\",\"periodo\":\"TARDE\"}"
+curl -i http://localhost:9091/agendamentos/1
+curl -i -X DELETE http://localhost:9091/agendamentos/1
+curl -i http://localhost:9091/agendamentos/1
+```
+
+A última consulta retorna 404. Corpo ilustrativo, com `path` relativo obtido de `UriInfo.getPath()`:
 
 ```json
 {
   "codigo": "AGENDAMENTO_NAO_ENCONTRADO",
-  "mensagem": "Agendamento 999999 não encontrado.",
-  "timestamp": "2026-10-31T12:00:00Z",
-  "path": "/agendamentos/999999",
+  "mensagem": "Agendamento 1 não encontrado.",
+  "timestamp": "2026-11-08T12:00:00Z",
+  "path": "agendamentos/1",
   "detalhes": []
 }
 ```
 
-## Executar requisições
+Para 400, envie `{}` no POST. A resposta usa `codigo: DADOS_INVALIDOS` e a mesma estrutura, com detalhes de validação quando disponíveis. O contrato e os mappers estão detalhados na [arquitetura](ARQUITETURA.md#validacao-e-erros).
 
-Com API e mock iniciados, o roteiro verifica CRUD, Location, PUT/GET, 400/404/409, feriado e variação do contador. Usa sala aleatória e exclui apenas a reserva que criou:
+### Postman e script automatizado
+
+Importe a [coleção Postman](agendamento-api/postman/projeto-final.postman_collection.json) e execute a pasta **Fluxo principal — mock UP** na ordem. `baseUrl` aponta para a API; a coleção calcula datas do próximo ano e uma sala aleatória. Os testes verificam CRUD, `Location`, PUT/GET, erros e métrica antes/depois. A presença desses scripts não equivale a um relatório de execução.
+
+Alternativamente, com API e mock ativos, use o [script PowerShell](agendamento-api/scripts/validar-http.ps1) ou o [script Bash](agendamento-api/scripts/validar-http.sh), a partir de `agendamento-api`. Ambos verificam CRUD, erros, `Location`, persistência de PUT e contador antes/depois, criam uma reserva temporária e tentam removê-la ao terminar. Execute sem criações concorrentes para a comparação exata do contador. O Bash requer **Bash 3.2+, curl e Python 3** (`python3` no `PATH`); o PowerShell usa .NET, sem curl ou Python.
+
+**PowerShell**
 
 ```powershell
 ./scripts/validar-http.ps1
+# URL alternativa:
+./scripts/validar-http.ps1 -BaseUrl 'http://localhost:9091'
 ```
 
-Para experimentar manualmente:
+**Bash**
 
-```powershell
-$ano = (Get-Date).Year + 1
-$body = @{id_sala=101; id_usuario=10; uf='SP'; data="$ano-02-10"; periodo='MANHA'} | ConvertTo-Json
-$reserva = Invoke-RestMethod http://localhost:9091/agendamentos -Method Post -ContentType 'application/json' -Body $body
-Invoke-RestMethod "http://localhost:9091/agendamentos/$($reserva.id)"
-$body = @{id_sala=101; id_usuario=10; uf='SP'; data="$ano-02-10"; periodo='TARDE'} | ConvertTo-Json
-Invoke-RestMethod "http://localhost:9091/agendamentos/$($reserva.id)" -Method Put -ContentType 'application/json' -Body $body
-Invoke-RestMethod "http://localhost:9091/agendamentos/$($reserva.id)" -Method Delete
+```bash
+bash scripts/validar-http.sh
+# URL alternativa:
+bash scripts/validar-http.sh --base-url 'http://localhost:9091'
 ```
 
-Importe [postman/projeto-final.postman_collection.json](agendamento-api/postman/projeto-final.postman_collection.json) no Postman e execute a pasta **Fluxo principal — mock UP** na ordem. Datas são calculadas para o próximo ano. Ajuste `baseUrl` se alterar a porta.
+A invocação com `bash` dispensa permissão de execução. Para execução direta em Linux/macOS, no **Bash**:
 
-Para demonstrar resiliência, pare somente o mock com Ctrl+C e execute:
+```bash
+chmod +x scripts/validar-http.sh
+./scripts/validar-http.sh
+```
+
+Para executar o `.ps1` em um novo processo com **PowerShell 7 instalado**, use este comando comum a **PowerShell e Bash** (Windows/Linux/macOS):
+
+```bash
+pwsh -File scripts/validar-http.ps1
+```
+
+No Windows, a política de execução pode impedir o `.ps1`: consulte `Get-ExecutionPolicy -List` no **PowerShell** e siga a política da organização. Se o arquivo revisado estiver bloqueado por ter sido baixado, use `Unblock-File ./scripts/validar-http.ps1` no **PowerShell do Windows**; isso não altera a política. Em Linux/macOS, `pwsh -File` dispensa `chmod` para o `.ps1`. Para chamar o `.sh` pelo PowerShell, use `bash scripts/validar-http.sh` com Bash e dependências instalados. No Windows, execute o roteiro Bash em Git Bash ou WSL, com suas dependências nesse ambiente; no WSL, confira a acessibilidade da API e ajuste `--base-url` se necessário.
+
+Para demonstrar falha externa, pare apenas o mock e execute:
+
+**PowerShell**
 
 ```powershell
 ./scripts/validar-http.ps1 -FalhaExterna
 ```
 
-O roteiro espera 503, nenhuma reserva gravada e contador inalterado. Reinicie o mock para voltar às criações normais. Na coleção, habilite `testarFalha=true` e execute apenas o cenário opcional correspondente.
+**Bash**
 
-## Banco e profiles
+```bash
+bash scripts/validar-http.sh --falha-externa
+```
 
-O banco é H2 em arquivo, por padrão `data/agendamentos.mv.db`. Dev, staging e prod usam `update` e não recriam o schema. Não execute duas instâncias sobre o mesmo arquivo. Os testes padrão usam somente H2 em memória com schema descartável; a configuração de teste staging também aponta explicitamente para memória.
+Espera-se 503, ausência de gravação e contador inalterado. Reinicie o mock depois. No Postman, habilite `testarFalha=true` e execute apenas o cenário opcional correspondente, após o fluxo principal.
+
+<a id="configuracoes-e-profiles"></a>
+## Configurações e profiles
+
+Fontes: [application.properties](agendamento-api/src/main/resources/application.properties) e [application-staging.properties](agendamento-api/src/main/resources/application-staging.properties).
+
+| Profile | Banco / schema | Nome padrão em `/info` |
+|---|---|---|
+| `dev` | H2 em arquivo; `update` | Agendamento de Massagem |
+| `staging` | H2 em arquivo; `update` | Agendamento de Massagem - STAGING |
+| `prod` | PostgreSQL; `update` | Agendamento de Massagem - PROD |
+| `test` | H2 em memória; `drop-and-create` | Agendamento de Massagem |
 
 | Variável | Padrão / finalidade |
 |---|---|
-| `AGENDAMENTO_NOME` | Agendamento de Massagem; sobrescreve o nome no /info |
-| `AGENDAMENTO_PRONTO` | true; false faz readiness retornar DOWN |
-| `FERIADOS_URL` | http://127.0.0.1:8081 |
-| `AGENDAMENTO_DB_URL` | jdbc:h2:file:./data/agendamentos |
-| `QUARKUS_HTTP_PORT` | 9091 |
-| `QUARKUS_PROFILE` | dev no modo desenvolvimento; prod no JAR |
-| `FERIADOS_HOST` / `FERIADOS_PORT` | 127.0.0.1 / 8081; variáveis do processo do mock |
-| `FERIADOS_EXTRAS` | Lista no formato SP:2030-04-10,RJ:2030-05-20; usada pelo mock |
+| `AGENDAMENTO_NOME` | Sobrescreve o nome do profile |
+| `AGENDAMENTO_PRONTO` | `true`; `false` torna o check de readiness DOWN |
+| `FERIADOS_URL` | `http://127.0.0.1:8081` |
+| `AGENDAMENTO_DB_URL` | `jdbc:h2:file:./data/agendamentos`, para dev/staging |
+| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | Em prod: `jdbc:postgresql://postgres:5432/catalogodb` / `catalogo` / senha sem padrão |
+| `QUARKUS_HTTP_PORT` | Sobrescreve a porta 9091 |
+| `QUARKUS_PROFILE` | Seleciona profile; dev no modo desenvolvimento, prod no JAR sem seleção explícita |
+| `FERIADOS_HOST` / `FERIADOS_PORT` | Variáveis do mock: `127.0.0.1` / `8081` |
+| `FERIADOS_EXTRAS` | Variável do mock; lista como `SP:2030-04-10,RJ:2030-05-20` |
 
-Dev: `mvn quarkus:dev`. Para staging, pare a instância anterior e execute:
+Para demonstrar dois profiles, consulte `/info` com `mvn quarkus:dev`, pare essa instância e inicie `staging`. Primeiro confira o nome padrão com `mvn quarkus:dev "-Dquarkus.profile=staging"`; depois reinicie com sobrescritas por ambiente:
 
-```powershell
-$env:QUARKUS_PROFILE='staging'
-mvn quarkus:dev
+**Bash**
+
+```bash
+AGENDAMENTO_NOME='Massagem - demonstracao' AGENDAMENTO_PRONTO=false \
+  mvn quarkus:dev "-Dquarkus.profile=staging"
 ```
 
-Sem sobrescrita, `GET /info` retorna “Agendamento de Massagem - STAGING”. Para demonstrar configuração externa, reinicie com:
+**PowerShell**
 
 ```powershell
 $env:AGENDAMENTO_NOME='Massagem - demonstracao'
 $env:AGENDAMENTO_PRONTO='false'
-mvn quarkus:dev
+mvn quarkus:dev "-Dquarkus.profile=staging"
+# Depois de encerrar:
+Remove-Item Env:AGENDAMENTO_NOME, Env:AGENDAMENTO_PRONTO -ErrorAction SilentlyContinue
 ```
 
-`/info` deve refletir o nome; liveness continua 200/UP e readiness retorna 503/DOWN. A liveness verifica que a aplicação está viva; ausência do processo ou bloqueio impede resposta. Readiness verifica a habilitação controlável e o datasource; falha do banco também pode torná-la DOWN. O mock não participa da readiness: sua falha aparece como 503 nas operações que o consultam.
+Consulte `/info`, `/q/health/live` e `/q/health/ready`: nome sobrescrito, live 200/UP e ready 503/DOWN são os resultados esperados. No Postman, habilite `testarReadinessDown=true` para o cenário opcional. O check de liveness sempre retorna UP quando executa; processo parado não responde, em vez de produzir um JSON DOWN. A integração de feriados não participa da readiness.
 
-Depois da demonstração, limpe as variáveis:
+## Cobertura de requisitos
 
-```powershell
-Remove-Item Env:QUARKUS_PROFILE, Env:AGENDAMENTO_NOME, Env:AGENDAMENTO_PRONTO -ErrorAction SilentlyContinue
-```
-
-## Compilar e testar
-
-```powershell
-mvn -B -ntp package
-java -jar target/quarkus-app/quarkus-run.jar
-```
-
-Os testes iniciam mocks HTTP locais automaticamente. Os relatórios ficam em `target/surefire-reports`. O JAR usa H2 também no profile prod e precisa do mock para POST/PUT.
-
-## Arquitetura e evidências dos requisitos 01–16
-
-```text
-studio.agendamento/
-├── agendamentos/
-│   ├── boundary/       # Resource, RequestDto, ResponseDto
-│   ├── domain/         # Service CDI, BO, regras e eventos
-│   └── repository/     # Entity JPA, PanacheRepository, enum
-├── integracao/feriados/ # REST Client, contrato externo, Retry/Fallback
-└── platform/           # Erros, health, /info e métrica
-```
-
-O Resource passa campos ao Service e converte o BO por `ResponseDto.from`. As escritas são transacionais no Service. A métrica `agendamentos_criados_total` aumenta somente após commit de criação. Lombok `@RequiredArgsConstructor` gera os construtores dos campos finais usados na injeção CDI, sem `@Data` em entidades.
-
-| Requisito | Onde encontrar a evidência |
-|---|---|
-| 01 — Métodos HTTP | AgendamentoResource; CRUD no Postman e validar-http.ps1 |
-| 02 — Status e Location | CRUD e testes de erro em AgendamentoResourceTest |
-| 03 — Lombok | Resource e Service com @RequiredArgsConstructor |
-| 04 — Quarkus/JAX-RS | AgendamentoResource; respostas JSON nos testes |
-| 05 — CDI e negócio | AgendamentoService; conflitos e feriados |
-| 06 — REST Client | FeriadosClient, FeriadosService e mock local |
-| 07 — Configuração e profiles | application.properties, application-staging.properties, /info |
-| 08 — Health | platform/health; StagingReadinessTest |
-| 09 — Resiliência | FeriadosService; teste de três tentativas e 503 |
-| 10 — Métrica | AgendamentoMetrics; contador antes/depois |
-| 11 — JPA | AgendamentoEntity; tabela criada nos testes H2 |
-| 12 — Panache | AgendamentoRepository; CRUD HTTP |
-| 13 — Transações | AgendamentoService; PUT/GET e concorrência |
-| 14 — Bean Validation | AgendamentoRequestDto e @Valid no Resource |
-| 15 — ExceptionMapper | platform/error/mapper; testes 404/409/503 |
-| 16 — Erro padronizado | ErroResponse; testes distintos de 400 e 404 |
-
-Consulte [evidencias.md](evidencias.md) para separar implementação, testes executados e demonstrações pendentes.
-
-## Material anterior preservado
-
-Os pacotes `studio.catalogo`, seus testes e as documentações das aulas continuam no repositório. As rotas didáticas `/produtos`, `/products` e `/products-native` permanecem disponíveis; as informações antigas foram movidas para `/catalogo/info` para liberar `/info` ao agendamento.
-
-A [documentação histórica do catálogo](README-catalogo-aulas.md), os arquivos Compose/PostgreSQL e os guias das aulas descrevem a configuração anterior. O caminho de execução deste projeto final é o H2 com mock de feriados descrito acima; os Compose antigos não foram adaptados nem validados para o agendamento. Nenhum banco existente deve ser removido para iniciar ou testar a API.
+Os 16 requisitos possuem implementação identificada e estão individualmente rastreados no [checklist](checklist.md). A comprovação integral depende dos resultados de testes e demonstrações ali registrados, especialmente dois profiles com sobrescrita por ambiente.
