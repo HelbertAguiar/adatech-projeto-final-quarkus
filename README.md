@@ -2,7 +2,12 @@
 
 API REST para reservar salas de massagem por data e período (`MANHA`, `TARDE` ou `NOITE`). Evita reservas da mesma sala no mesmo período e impede agendamentos em feriados da UF informada, consultados por HTTP em um mock local.
 
-**Equipe 1 — Sala 1:** Helbert Oscar de Aguiar Silva, Gabriel Moraes Kleiman, Andre Augusto de Araujo Costa, Kali Rocha Ribeiro e Khalil de Freitas.
+**Equipe 1 — Sala 1:**
+- Andre Augusto de Araujo Costa
+- Gabriel Moraes Kleiman
+- Helbert Oscar de Aguiar Silva
+- Kali Rocha Ribeiro
+- Khalil de Freitas
 
 ## Documentação
 
